@@ -1,50 +1,44 @@
 import streamlit as st
+import requests
 import pandas as pd
-import streamlit as st
-from supabase import create_client
-
-# Credenciales
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
-
-# La URL debe terminar en .co, no añadir nada más
-supabase = create_client(url, key)
-
-# Probar conexión
-try:
-    # Hacer una consulta simple
-    response = supabase.table("maquinas").select("*").limit(1).execute()
-    st.success("✅ Conexión exitosa")
-except Exception as e:
-    st.error(f"Error: {e}")
-    st.write("URL usada:", url)
 from datetime import datetime
 
-# Configuración de la página
 st.set_page_config(page_title="LeanCan", page_icon="🥫", layout="wide")
 
 st.title("🥫 LeanCan Scheduler")
-st.markdown("---")
 
-# Conexión a Supabase
-@st.cache_resource
-def init_supabase():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+# Configuración de Supabase
+SUPABASE_URL = "https://nubxhtlertuwmevxzuyd.supabase.co/rest/v1"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im51YnhodGxlcnR1d21ldnh6dXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMTI4ODYsImV4cCI6MjA5NTg4ODg4Nn0.sxXfypXZHyqFnXL1xeXdvXw925C6v-dg9Kg--7KNLWs"
 
-supabase = init_supabase()
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}"
+}
+
+def supabase_get(table):
+    """Función para obtener datos de Supabase"""
+    response = requests.get(f"{SUPABASE_URL}/{table}", headers=HEADERS)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Error al obtener {table}: {response.status_code}")
+        return []
+
+def supabase_post(table, data):
+    """Función para insertar datos en Supabase"""
+    response = requests.post(f"{SUPABASE_URL}/{table}", headers=HEADERS, json=data)
+    return response
+
+def supabase_delete(table, id_field, id_value):
+    """Función para eliminar datos de Supabase"""
+    response = requests.delete(f"{SUPABASE_URL}/{table}?{id_field}=eq.{id_value}", headers=HEADERS)
+    return response
 
 # Menú principal
 menu = st.sidebar.radio(
     "📋 MENÚ PRINCIPAL",
-    [
-        "🏭 Líneas de Fabricación",
-        "⚙️ Máquinas",
-        "👥 Clientes",
-        "📦 Referencias",
-        "📝 Pedidos"
-    ]
+    ["🏭 Líneas de Fabricación", "⚙️ Máquinas", "👥 Clientes", "📦 Referencias", "📝 Pedidos"]
 )
 
 # ============================================
@@ -53,17 +47,17 @@ menu = st.sidebar.radio(
 if menu == "🏭 Líneas de Fabricación":
     st.header("🏭 Líneas de Fabricación")
     
-    maquinas = supabase.table("maquinas").select("*").execute()
+    maquinas = supabase_get("maquinas")
     
-    if maquinas.data:
-        for row in maquinas.data:
+    if maquinas:
+        for row in maquinas:
             col1, col2, col3 = st.columns([2, 2, 1])
             with col1:
-                st.subheader(f"**{row['nombre']}**")
-                st.caption(f"Formato: {row['formato']}")
+                st.subheader(f"**{row.get('nombre', 'Sin nombre')}**")
+                st.caption(f"Formato: {row.get('formato', 'N/A')}")
             with col2:
-                st.metric("⚡ Velocidad", f"{row['velocidad']} latas/min")
-                st.caption(f"Capacidad diaria: {row['capacidad']:,} latas")
+                st.metric("⚡ Velocidad", f"{row.get('velocidad', 0)} latas/min")
+                st.caption(f"Capacidad diaria: {row.get('capacidad', 0):,} latas")
             with col3:
                 st.metric("📊 Carga", "0%")
             st.markdown("---")
@@ -79,16 +73,16 @@ elif menu == "⚙️ Máquinas":
     tab1, tab2 = st.tabs(["📋 Listado", "➕ Añadir"])
     
     with tab1:
-        maquinas = supabase.table("maquinas").select("*").order("id").execute()
-        if maquinas.data:
-            for row in maquinas.data:
-                with st.expander(f"🖥️ {row['nombre']}"):
+        maquinas = supabase_get("maquinas")
+        if maquinas:
+            for row in maquinas:
+                with st.expander(f"🖥️ {row.get('nombre', 'Sin nombre')}"):
                     col1, col2, col3, col4 = st.columns([2,2,2,1])
-                    col1.metric("Velocidad", f"{row['velocidad']} latas/min")
-                    col2.metric("Capacidad", f"{row['capacidad']:,} latas/día")
-                    col3.metric("Formato", row['formato'])
-                    if col4.button("🗑️", key=f"del_maq_{row['id']}"):
-                        supabase.table("maquinas").delete().eq("id", row['id']).execute()
+                    col1.metric("Velocidad", f"{row.get('velocidad', 0)} latas/min")
+                    col2.metric("Capacidad", f"{row.get('capacidad', 0):,} latas/día")
+                    col3.metric("Formato", row.get('formato', 'N/A'))
+                    if col4.button("🗑️", key=f"del_maq_{row.get('id')}"):
+                        supabase_delete("maquinas", "id", row.get('id'))
                         st.rerun()
         else:
             st.info("No hay máquinas")
@@ -103,10 +97,12 @@ elif menu == "⚙️ Máquinas":
                 formato = st.text_input("Formato")
                 capacidad = st.number_input("Capacidad diaria", min_value=1, value=30000)
             if st.form_submit_button("Guardar"):
-                supabase.table("maquinas").insert({
-                    "nombre": nombre, "velocidad": velocidad,
-                    "capacidad": capacidad, "formato": formato
-                }).execute()
+                supabase_post("maquinas", {
+                    "nombre": nombre,
+                    "velocidad": velocidad,
+                    "capacidad": capacidad,
+                    "formato": formato
+                })
                 st.rerun()
 
 # ============================================
@@ -118,15 +114,15 @@ elif menu == "👥 Clientes":
     tab1, tab2 = st.tabs(["📋 Listado", "➕ Añadir"])
     
     with tab1:
-        clientes = supabase.table("clientes").select("*").order("id").execute()
-        if clientes.data:
-            for row in clientes.data:
-                with st.expander(f"🏢 {row['nombre']}"):
+        clientes = supabase_get("clientes")
+        if clientes:
+            for row in clientes:
+                with st.expander(f"🏢 {row.get('nombre', 'Sin nombre')}"):
                     col1, col2, col3 = st.columns([2,2,1])
-                    col1.metric("Prioridad", f"{row['prioridad']}/10")
-                    col2.metric("Penalización", f"{row['penalizacion']} €/día")
-                    if col3.button("🗑️", key=f"del_cli_{row['id']}"):
-                        supabase.table("clientes").delete().eq("id", row['id']).execute()
+                    col1.metric("Prioridad", f"{row.get('prioridad', 5)}/10")
+                    col2.metric("Penalización", f"{row.get('penalizacion', 0)} €/día")
+                    if col3.button("🗑️", key=f"del_cli_{row.get('id')}"):
+                        supabase_delete("clientes", "id", row.get('id'))
                         st.rerun()
         else:
             st.info("No hay clientes")
@@ -140,9 +136,11 @@ elif menu == "👥 Clientes":
             with col2:
                 penalizacion = st.number_input("Penalización (€/día)", min_value=0, value=0)
             if st.form_submit_button("Guardar"):
-                supabase.table("clientes").insert({
-                    "nombre": nombre, "prioridad": prioridad, "penalizacion": penalizacion
-                }).execute()
+                supabase_post("clientes", {
+                    "nombre": nombre,
+                    "prioridad": prioridad,
+                    "penalizacion": penalizacion
+                })
                 st.rerun()
 
 # ============================================
@@ -154,16 +152,16 @@ elif menu == "📦 Referencias":
     tab1, tab2 = st.tabs(["📋 Listado", "➕ Añadir"])
     
     with tab1:
-        productos = supabase.table("productos").select("*").order("sku").execute()
-        if productos.data:
-            for row in productos.data:
-                with st.expander(f"📦 {row['sku']} - {row['nombre']}"):
+        productos = supabase_get("productos")
+        if productos:
+            for row in productos:
+                with st.expander(f"📦 {row.get('sku', 'Sin SKU')} - {row.get('nombre', 'Sin nombre')}"):
                     col1, col2, col3, col4 = st.columns([1,1,1,1])
-                    col1.metric("SKU", row['sku'])
-                    col2.metric("Formato", row['formato'])
+                    col1.metric("SKU", row.get('sku', 'N/A'))
+                    col2.metric("Formato", row.get('formato', 'N/A'))
                     col3.metric("Familia", row.get('familia', '-'))
-                    if col4.button("🗑️", key=f"del_prod_{row['sku']}"):
-                        supabase.table("productos").delete().eq("sku", row['sku']).execute()
+                    if col4.button("🗑️", key=f"del_prod_{row.get('sku')}"):
+                        supabase_delete("productos", "sku", row.get('sku'))
                         st.rerun()
         else:
             st.info("No hay productos")
@@ -178,9 +176,12 @@ elif menu == "📦 Referencias":
                 formato = st.selectbox("Formato", ["RR-120", "RR-90", "RO-85", "RT"])
                 familia = st.text_input("Familia")
             if st.form_submit_button("Guardar"):
-                supabase.table("productos").insert({
-                    "sku": sku, "nombre": nombre, "formato": formato, "familia": familia
-                }).execute()
+                supabase_post("productos", {
+                    "sku": sku,
+                    "nombre": nombre,
+                    "formato": formato,
+                    "familia": familia
+                })
                 st.rerun()
 
 # ============================================
@@ -189,26 +190,30 @@ elif menu == "📦 Referencias":
 elif menu == "📝 Pedidos":
     st.header("📝 Gestión de Pedidos")
     
-    clientes = supabase.table("clientes").select("*").execute()
-    productos = supabase.table("productos").select("*").execute()
+    clientes = supabase_get("clientes")
+    productos = supabase_get("productos")
     
-    if not clientes.data or not productos.data:
+    if not clientes or not productos:
         st.warning("Primero crea clientes y productos")
     else:
         tab1, tab2 = st.tabs(["📋 Listado", "➕ Nuevo Pedido"])
         
         with tab1:
-            pedidos = supabase.table("pedidos").select("*").order("id", desc=True).execute()
-            if pedidos.data:
-                for row in pedidos.data:
-                    with st.expander(f"📄 Pedido {row['numero']}"):
+            pedidos = supabase_get("pedidos")
+            if pedidos:
+                # Crear diccionario de clientes por ID
+                clientes_dict = {c.get('id'): c.get('nombre') for c in clientes}
+                
+                for row in pedidos:
+                    cliente_nombre = clientes_dict.get(row.get('cliente_id'), "Desconocido")
+                    with st.expander(f"📄 Pedido {row.get('numero', 'Sin número')} - {cliente_nombre}"):
                         col1, col2, col3, col4 = st.columns(4)
-                        col1.metric("Fecha entrega", row['fecha_entrega'])
-                        col2.metric("Cantidad", f"{row['cantidad']:,} latas")
-                        col3.metric("Producto", row['producto_sku'])
-                        col4.metric("RT", "✅" if row['lleva_rt'] else "❌")
-                        if st.button("🗑️", key=f"del_ped_{row['id']}"):
-                            supabase.table("pedidos").delete().eq("id", row['id']).execute()
+                        col1.metric("Fecha entrega", row.get('fecha_entrega', 'N/A'))
+                        col2.metric("Cantidad", f"{row.get('cantidad', 0):,} latas")
+                        col3.metric("Producto", row.get('producto_sku', 'N/A'))
+                        col4.metric("RT", "✅" if row.get('lleva_rt') else "❌")
+                        if st.button("🗑️", key=f"del_ped_{row.get('id')}"):
+                            supabase_delete("pedidos", "id", row.get('id'))
                             st.rerun()
             else:
                 st.info("No hay pedidos")
@@ -218,22 +223,22 @@ elif menu == "📝 Pedidos":
                 col1, col2 = st.columns(2)
                 with col1:
                     numero = st.text_input("Número de pedido")
-                    cliente_opciones = {c['nombre']: c['id'] for c in clientes.data}
+                    cliente_opciones = {c.get('nombre'): c.get('id') for c in clientes}
                     cliente_nombre = st.selectbox("Cliente", list(cliente_opciones.keys()))
                 with col2:
                     fecha_entrega = st.date_input("Fecha entrega", datetime.now())
-                    producto_opciones = {p['sku']: p['nombre'] for p in productos.data}
+                    producto_opciones = {p.get('sku'): p.get('nombre') for p in productos}
                     producto_sku = st.selectbox("Producto", list(producto_opciones.keys()))
                     cantidad = st.number_input("Cantidad (latas)", min_value=1, value=10000)
                     lleva_rt = st.checkbox("Lleva RT")
                 
                 if st.form_submit_button("Guardar"):
-                    supabase.table("pedidos").insert({
+                    supabase_post("pedidos", {
                         "numero": numero,
                         "cliente_id": cliente_opciones[cliente_nombre],
                         "fecha_entrega": str(fecha_entrega),
                         "cantidad": cantidad,
                         "producto_sku": producto_sku,
                         "lleva_rt": 1 if lleva_rt else 0
-                    }).execute()
+                    })
                     st.rerun()
