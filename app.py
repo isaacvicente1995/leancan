@@ -1,6 +1,23 @@
 import streamlit as st
 import pandas as pd
+import streamlit as st
 from supabase import create_client
+
+# Credenciales
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
+
+# La URL debe terminar en .co, no añadir nada más
+supabase = create_client(url, key)
+
+# Probar conexión
+try:
+    # Hacer una consulta simple
+    response = supabase.table("maquinas").select("*").limit(1).execute()
+    st.success("✅ Conexión exitosa")
+except Exception as e:
+    st.error(f"Error: {e}")
+    st.write("URL usada:", url)
 from datetime import datetime
 
 # Configuración de la página
